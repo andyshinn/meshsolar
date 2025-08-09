@@ -76,6 +76,7 @@ MeshSolar    meshsolar;            // Main MeshSolar controller object
  * ============================================================================
  */
 
+
 /**
  * @brief Listen for incoming string data on serial port
  * @param input Reference to string buffer for received data
@@ -282,7 +283,7 @@ static bool parseJsonCommand(const char* json, meshsolar_config_t* cmd) {
  */
 size_t meshsolar_status_to_json(const meshsolar_status_t* status, String& output) {
     output = "";
-    StaticJsonDocument<512> doc;
+    StaticJsonDocument<1024> doc;
     doc["command"]          = "status";
     doc["soc_gauge"]        = status->soc_gauge;
     doc["charge_current"]   = status->charge_current;
@@ -318,7 +319,7 @@ size_t meshsolar_status_to_json(const meshsolar_status_t* status, String& output
  */
 size_t meshsolar_basic_config_to_json(const basic_config_t *basic, String& output) {
     output = "";
-    StaticJsonDocument<512> doc;
+    StaticJsonDocument<1024> doc;
     doc["command"] = "config";
     doc["battery"]["type"] = String(basic->type);
     doc["battery"]["cell_number"] = basic->cell_number;
@@ -333,7 +334,10 @@ size_t meshsolar_basic_config_to_json(const basic_config_t *basic, String& outpu
     protection["temp_enabled"]          = basic->protection.enabled;
 
     output = "";
-    return serializeJson(doc, output);
+    size_t jsonSize = serializeJson(doc, output);
+    LOG_D("Basic JSON: size=%d, output.length()=%d", jsonSize, output.length());
+    LOG_D("Basic JSON content: %s", output.c_str());
+    return jsonSize;
 }
 
 
@@ -374,9 +378,102 @@ size_t meshsolar_advance_config_to_json(const advance_config_t *config, String& 
     cedv["discharge_cedv90"] = config->cedv.discharge_cedv90;
     cedv["discharge_cedv100"] = config->cedv.discharge_cedv100;
     output = "";
-    return serializeJson(doc, output);
+
+    // Check if document is valid before serialization
+    if (doc.overflowed()) {
+        LOG_E("StaticJsonDocument overflowed! Increase buffer size.");
+        return 0;
+    }
+
+    size_t jsonSize = serializeJson(doc, output);
+    LOG_D("Advance JSON: size=%d, output.length()=%d", jsonSize, output.length());
+
+    // Check if output was truncated
+    if (jsonSize == 0) {
+        LOG_E("serializeJson returned 0 - serialization failed!");
+    } else if (output.length() != jsonSize) {
+        LOG_E("Output length mismatch! jsonSize=%d, output.length()=%d", jsonSize, output.length());
+    }
+
+    LOG_D("Advance JSON content: %s", output.c_str());
+    return jsonSize;
 }
 
+
+/**
+ * @brief Convert sync data to JSON array format for web flasher compatibility
+ * @param basic Pointer to basic configuration structure
+ * @param advance Pointer to advance configuration structure
+ * @param times Number of times to repeat each config pair
+ * @param output Reference to output string
+ * @return Size of serialized JSON array
+ *
+ * FUNCTION: meshsolar_sync_array_to_json
+ * - Generates JSON array containing config pairs for web flasher
+ * - Eliminates serial parsing issues with multiple individual objects
+ * - Format: [{"command":"config",...},{"command":"advance",...},...]
+ */
+size_t meshsolar_sync_array_to_json(const basic_config_t *basic, const advance_config_t *advance, uint8_t times, String& output) {
+    output = "";
+    // Large buffer for array containing multiple config objects
+    StaticJsonDocument<4096> doc;
+    JsonArray array = doc.to<JsonArray>();
+
+    for (uint8_t i = 0; i < times; i++) {
+        // Add basic config object
+        JsonObject basicObj = array.createNestedObject();
+        basicObj["command"] = "config";
+
+        JsonObject battery = basicObj.createNestedObject("battery");
+        battery["type"] = String(basic->type);
+        battery["cell_number"] = basic->cell_number;
+        battery["design_capacity"] = basic->design_capacity;
+        battery["cutoff_voltage"] = basic->discharge_cutoff_voltage;
+
+        JsonObject protection = basicObj.createNestedObject("temperature_protection");
+        protection["discharge_high_temp_c"] = basic->protection.discharge_high_temp_c;
+        protection["discharge_low_temp_c"] = basic->protection.discharge_low_temp_c;
+        protection["charge_high_temp_c"] = basic->protection.charge_high_temp_c;
+        protection["charge_low_temp_c"] = basic->protection.charge_low_temp_c;
+        protection["temp_enabled"] = basic->protection.enabled;
+
+        // Add advance config object
+        JsonObject advanceObj = array.createNestedObject();
+        advanceObj["command"] = "advance";
+
+        JsonObject advBattery = advanceObj.createNestedObject("battery");
+        advBattery["cuv"] = advance->battery.cuv;
+        advBattery["eoc"] = advance->battery.eoc;
+        advBattery["eoc_protect"] = advance->battery.eoc_protect;
+
+        JsonObject cedv = advanceObj.createNestedObject("cedv");
+        cedv["cedv0"] = advance->cedv.cedv0;
+        cedv["cedv1"] = advance->cedv.cedv1;
+        cedv["cedv2"] = advance->cedv.cedv2;
+        cedv["discharge_cedv0"] = advance->cedv.discharge_cedv0;
+        cedv["discharge_cedv10"] = advance->cedv.discharge_cedv10;
+        cedv["discharge_cedv20"] = advance->cedv.discharge_cedv20;
+        cedv["discharge_cedv30"] = advance->cedv.discharge_cedv30;
+        cedv["discharge_cedv40"] = advance->cedv.discharge_cedv40;
+        cedv["discharge_cedv50"] = advance->cedv.discharge_cedv50;
+        cedv["discharge_cedv60"] = advance->cedv.discharge_cedv60;
+        cedv["discharge_cedv70"] = advance->cedv.discharge_cedv70;
+        cedv["discharge_cedv80"] = advance->cedv.discharge_cedv80;
+        cedv["discharge_cedv90"] = advance->cedv.discharge_cedv90;
+        cedv["discharge_cedv100"] = advance->cedv.discharge_cedv100;
+    }
+
+    // Check if document overflowed
+    if (doc.overflowed()) {
+        LOG_E("Sync JSON array overflowed! Increase buffer size or reduce times parameter.");
+        return 0;
+    }
+
+    size_t jsonSize = serializeJson(doc, output);
+    LOG_D("Sync JSON array: size=%d, output.length()=%d, times=%d", jsonSize, output.length(), times);
+
+    return jsonSize;
+}
 
 /**
  * @brief Create standardized command response JSON
@@ -619,26 +716,20 @@ int meshSolarCmdHandle(const char *cmd)
                 LOG_I("Reset response sent");
             }
             else if (0 == strcmp(meshsolar.cmd.command, "sync")) {
-                size_t len = 0;
+                // Read current configuration data
                 TRY_EXECUTE(READ_TRY_NUM, READ_TRY_INTERVAL, readResults[0], meshsolar.get_realtime_bat_status());
                 TRY_EXECUTE(READ_TRY_NUM, READ_TRY_INTERVAL, readResults[1], meshsolar.get_basic_bat_realtime_setting());
                 TRY_EXECUTE(READ_TRY_NUM, READ_TRY_INTERVAL, readResults[2], meshsolar.get_advance_bat_realtime_setting());
-                for(uint8_t i = 0; i < meshsolar.cmd.sync.times; i++) {
-                    len = meshsolar_basic_config_to_json(&meshsolar.sync_rsp.basic, json); // Get the basic battery settings
-                    if(len > 0) {
-                        comSerial.println(json); // Send the configuration back to the serial port
-                        delay(50); // Increased delay for web flasher compatibility
-                        LOG_D("%s", json.c_str());
-                    }
 
-                    len = meshsolar_advance_config_to_json(&meshsolar.sync_rsp.advance, json); // Get the advanced battery settings
-                    if(len > 0) {
-                        comSerial.println(json); // Send the configuration back to the serial port
-                        delay(50); // Increased delay for web flasher compatibility
-                        LOG_D("%s", json.c_str());
-                    }
+                // Generate JSON array containing all sync data
+                size_t len = meshsolar_sync_array_to_json(&meshsolar.sync_rsp.basic, &meshsolar.sync_rsp.advance, meshsolar.cmd.sync.times, json);
+
+                if(len > 0) {
+                    comSerial.println(json); // Send complete JSON array
+                    LOG_I("Sync JSON array sent: %d config pairs", meshsolar.cmd.sync.times);
+                } else {
+                    LOG_E("Failed to generate sync JSON array");
                 }
-                LOG_I("Sync data sent %d times.", meshsolar.cmd.sync.times);
             }
             else if (0 == strcmp(meshsolar.cmd.command, "status")) {
                 // Status command - read battery status and send JSON response
