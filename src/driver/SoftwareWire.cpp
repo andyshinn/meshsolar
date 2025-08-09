@@ -132,12 +132,13 @@ SoftwareWire::SoftwareWire()
 // }
 
 SoftwareWire::SoftwareWire(uint8_t sdaPin, uint8_t sclPin, boolean pullups, boolean detectClockStretch)
+  : _sdaPin(sdaPin), _sclPin(sclPin), _pullups(pullups), _stretch(detectClockStretch),
+    _sdaBitMask(0), _sclBitMask(0), _sdaPortReg(nullptr), _sclPortReg(nullptr), 
+    _sdaDirReg(nullptr), _sclDirReg(nullptr), _sdaPinReg(nullptr), _sclPinReg(nullptr),
+    _transmission(0), _i2cdelay(0), _timeout(1000L), rxBufPut(0), rxBufGet(0)
 {
-  _sdaPin = sdaPin;
-  _sclPin = sclPin;
-  _pullups = pullups;
-  _stretch = detectClockStretch;
 
+  memset(rxBuf, 0, sizeof(rxBuf));
   setClock(100000UL);       // set default 100kHz
   setTimeout(1000L);        // default timeout 1s
 

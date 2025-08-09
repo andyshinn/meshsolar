@@ -77,25 +77,6 @@ MeshSolar    meshsolar;            // Main MeshSolar controller object
  */
 
 
-/**
- * @brief Listen for incoming string data on serial port
- * @param input Reference to string buffer for received data
- * @param terminator Character that indicates end of message (default: '\n')
- * @return true if complete message received, false otherwise
- *
- * PORTING NOTES:
- * - Uses comSerial.available() and comSerial.read()
- * - Ensure your platform's Serial implementation supports these methods
- * - For non-blocking operation, this function should be called frequently
- */
-static bool listenString(String& input, char terminator = '\n') {
-    while (comSerial.available() > 0) {
-        char c = comSerial.read();
-        if (c == terminator) return true;
-         else input += c;
-    }
-    return false;
-}
 
 /**
  * @brief Parse incoming JSON command and populate command structure
@@ -108,7 +89,7 @@ static bool listenString(String& input, char terminator = '\n') {
  * - "advance": Advanced battery settings
  * - "switch": FET control
  * - "reset": Battery gauge reset
- * - "sync": Synchronize settings
+ * - "sync": Send config, advance, and status data as array
  * - "status": Get current status (no parameters)
  *
  * PORTING NOTES:
@@ -155,22 +136,22 @@ static bool parseJsonCommand(const char* json, meshsolar_config_t* cmd) {
             return false;
         }
         strlcpy(cmd->basic.type, battery["type"] | "", sizeof(cmd->basic.type));
-        cmd->basic.cell_number = battery["cell_number"] | 0;
-        cmd->basic.design_capacity = battery["design_capacity"] | 0;
-        cmd->basic.discharge_cutoff_voltage = battery["cutoff_voltage"] | 0;
+        cmd->basic.cell_number = battery["cell_number"].as<uint8_t>();
+        cmd->basic.design_capacity = battery["design_capacity"].as<uint16_t>();
+        cmd->basic.discharge_cutoff_voltage = battery["cutoff_voltage"].as<uint16_t>();
 
-        cmd->basic.protection.charge_high_temp_c = tp["charge_high_temp_c"] | 0;
-        cmd->basic.protection.charge_low_temp_c = tp["charge_low_temp_c"] | 0;
-        cmd->basic.protection.discharge_high_temp_c = tp["discharge_high_temp_c"] | 0;
-        cmd->basic.protection.discharge_low_temp_c = tp["discharge_low_temp_c"] | 0;
-        cmd->basic.protection.enabled = tp["temp_enabled"] | false;
+        cmd->basic.protection.charge_high_temp_c = tp["charge_high_temp_c"].as<int8_t>();
+        cmd->basic.protection.charge_low_temp_c = tp["charge_low_temp_c"].as<int8_t>();
+        cmd->basic.protection.discharge_high_temp_c = tp["discharge_high_temp_c"].as<int8_t>();
+        cmd->basic.protection.discharge_low_temp_c = tp["discharge_low_temp_c"].as<int8_t>();
+        cmd->basic.protection.enabled = tp["temp_enabled"].as<bool>();
     }
     else if (strcmp(cmd->command, "switch") == 0) {
         if (!doc.containsKey("fet_en")) {
             LOG_E("Missing 'fet_en' field for 'switch' command");
             return false;
         }
-        cmd->fet_en.enable = doc["fet_en"] | false;
+        cmd->fet_en.enable = doc["fet_en"].as<bool>();
     }
     else if (strcmp(cmd->command, "advance") == 0) {
         if(doc["battery"].isNull() || doc["cedv"].isNull()) {
@@ -199,23 +180,23 @@ static bool parseJsonCommand(const char* json, meshsolar_config_t* cmd) {
                 LOG_E("Missing fields in 'battery' or 'cedv'");
                 return false;
         }
-        cmd->advance.battery.cuv            = battery["cuv"] | 0;
-        cmd->advance.battery.eoc            = battery["eoc"] | 0;
-        cmd->advance.battery.eoc_protect    = battery["eoc_protect"] | 0;
-        cmd->advance.cedv.cedv0             = cedv["cedv0"] | 0;
-        cmd->advance.cedv.cedv1             = cedv["cedv1"] | 0;
-        cmd->advance.cedv.cedv2             = cedv["cedv2"] | 0;
-        cmd->advance.cedv.discharge_cedv0   = cedv["discharge_cedv0"]  | 0;
-        cmd->advance.cedv.discharge_cedv10  = cedv["discharge_cedv10"] | 0;
-        cmd->advance.cedv.discharge_cedv20  = cedv["discharge_cedv20"] | 0;
-        cmd->advance.cedv.discharge_cedv30  = cedv["discharge_cedv30"] | 0;
-        cmd->advance.cedv.discharge_cedv40  = cedv["discharge_cedv40"] | 0;
-        cmd->advance.cedv.discharge_cedv50  = cedv["discharge_cedv50"] | 0;
-        cmd->advance.cedv.discharge_cedv60  = cedv["discharge_cedv60"] | 0;
-        cmd->advance.cedv.discharge_cedv70  = cedv["discharge_cedv70"] | 0;
-        cmd->advance.cedv.discharge_cedv80  = cedv["discharge_cedv80"] | 0;
-        cmd->advance.cedv.discharge_cedv90  = cedv["discharge_cedv90"] | 0;
-        cmd->advance.cedv.discharge_cedv100 = cedv["discharge_cedv100"]| 0;
+        cmd->advance.battery.cuv            = battery["cuv"].as<uint16_t>();
+        cmd->advance.battery.eoc            = battery["eoc"].as<uint16_t>();
+        cmd->advance.battery.eoc_protect    = battery["eoc_protect"].as<uint16_t>();
+        cmd->advance.cedv.cedv0             = cedv["cedv0"].as<uint16_t>();
+        cmd->advance.cedv.cedv1             = cedv["cedv1"].as<uint16_t>();
+        cmd->advance.cedv.cedv2             = cedv["cedv2"].as<uint16_t>();
+        cmd->advance.cedv.discharge_cedv0   = cedv["discharge_cedv0"].as<uint16_t>();
+        cmd->advance.cedv.discharge_cedv10  = cedv["discharge_cedv10"].as<uint16_t>();
+        cmd->advance.cedv.discharge_cedv20  = cedv["discharge_cedv20"].as<uint16_t>();
+        cmd->advance.cedv.discharge_cedv30  = cedv["discharge_cedv30"].as<uint16_t>();
+        cmd->advance.cedv.discharge_cedv40  = cedv["discharge_cedv40"].as<uint16_t>();
+        cmd->advance.cedv.discharge_cedv50  = cedv["discharge_cedv50"].as<uint16_t>();
+        cmd->advance.cedv.discharge_cedv60  = cedv["discharge_cedv60"].as<uint16_t>();
+        cmd->advance.cedv.discharge_cedv70  = cedv["discharge_cedv70"].as<uint16_t>();
+        cmd->advance.cedv.discharge_cedv80  = cedv["discharge_cedv80"].as<uint16_t>();
+        cmd->advance.cedv.discharge_cedv90  = cedv["discharge_cedv90"].as<uint16_t>();
+        cmd->advance.cedv.discharge_cedv100 = cedv["discharge_cedv100"].as<uint16_t>();
     }
     else if (strcmp(cmd->command, "reset") == 0) {
 
@@ -225,7 +206,7 @@ static bool parseJsonCommand(const char* json, meshsolar_config_t* cmd) {
             LOG_E("Missing 'times' field for 'sync' command");
             return false;
         }
-        cmd->sync.times = doc["times"] | 1; // Default to 1 if not specified
+        cmd->sync.times = doc["times"].as<uint8_t>(); // Times is checked to exist so this is safe to be 0
         if (cmd->sync.times < 1 || cmd->sync.times > 10) {
             LOG_E("'times' must be between 1 and 10");
             cmd->sync.times = 10; // Reset to default if out of range
@@ -301,7 +282,6 @@ size_t meshsolar_status_to_json(const meshsolar_status_t* status, String& output
         cell["temperature"] = round(status->cells[i].temperature * 1000)/1000.0f; // Round to 3 decimal places
         cell["voltage"]     = round((status->cells[i].voltage / 1000.0f) * 1000) / 1000.0f; // Round to 3 decimal places
     }
-    output = "";
     return serializeJson(doc, output);
 }
 
@@ -333,7 +313,6 @@ size_t meshsolar_basic_config_to_json(const basic_config_t *basic, String& outpu
     protection["charge_low_temp_c"]     = basic->protection.charge_low_temp_c;
     protection["temp_enabled"]          = basic->protection.enabled;
 
-    output = "";
     size_t jsonSize = serializeJson(doc, output);
     LOG_D("Basic JSON: size=%d, output.length()=%d", jsonSize, output.length());
     LOG_D("Basic JSON content: %s", output.c_str());
@@ -377,7 +356,6 @@ size_t meshsolar_advance_config_to_json(const advance_config_t *config, String& 
     cedv["discharge_cedv80"] = config->cedv.discharge_cedv80;
     cedv["discharge_cedv90"] = config->cedv.discharge_cedv90;
     cedv["discharge_cedv100"] = config->cedv.discharge_cedv100;
-    output = "";
 
     // Check if document is valid before serialization
     if (doc.overflowed()) {
@@ -491,8 +469,93 @@ size_t meshsolar_cmd_rsp_to_json(bool status, String& output) {
     StaticJsonDocument<64> doc;
     doc["command"] = "rsp";
     doc["status"] = status;
-    output = "";
     // Serialize the JSON document to the output string
+    return serializeJson(doc, output);
+}
+
+/**
+ * @brief Generate complete sync array with config, advance, and status data
+ * @param basic Pointer to basic configuration structure
+ * @param advance Pointer to advance configuration structure  
+ * @param status Pointer to status structure
+ * @param times Number of times to repeat each config triplet
+ * @param output Reference to output string
+ * @return Size of serialized JSON array
+ *
+ * FUNCTION: meshsolar_complete_sync_array_to_json
+ * - Generates JSON array containing config, advance, and status objects
+ * - Format: [{"command":"config",...},{"command":"advance",...},{"command":"status",...}]
+ * - Repeated 'times' number of times for web flasher compatibility
+ */
+size_t meshsolar_complete_sync_array_to_json(const basic_config_t *basic, const advance_config_t *advance, const meshsolar_status_t* status, uint8_t times, String& output) {
+    output = "";
+    // Large buffer for array containing multiple config objects
+    StaticJsonDocument<4096> doc;
+    JsonArray array = doc.to<JsonArray>();
+
+    for (uint8_t i = 0; i < times; i++) {
+        // Add basic config object
+        JsonObject basicObj = array.createNestedObject();
+        basicObj["command"] = "config";
+
+        JsonObject battery = basicObj.createNestedObject("battery");
+        battery["type"] = String(basic->type);
+        battery["cell_number"] = basic->cell_number;
+        battery["design_capacity"] = basic->design_capacity;
+        battery["cutoff_voltage"] = basic->discharge_cutoff_voltage;
+
+        JsonObject protection = basicObj.createNestedObject("temperature_protection");
+        protection["discharge_high_temp_c"] = basic->protection.discharge_high_temp_c;
+        protection["discharge_low_temp_c"] = basic->protection.discharge_low_temp_c;
+        protection["charge_high_temp_c"] = basic->protection.charge_high_temp_c;
+        protection["charge_low_temp_c"] = basic->protection.charge_low_temp_c;
+        protection["temp_enabled"] = basic->protection.enabled;
+
+        // Add advance config object
+        JsonObject advanceObj = array.createNestedObject();
+        advanceObj["command"] = "advance";
+
+        JsonObject advBattery = advanceObj.createNestedObject("battery");
+        advBattery["cuv"] = advance->battery.cuv;
+        advBattery["eoc"] = advance->battery.eoc;
+        advBattery["eoc_protect"] = advance->battery.eoc_protect;
+
+        JsonObject cedv = advanceObj.createNestedObject("cedv");
+        cedv["cedv0"] = advance->cedv.cedv0;
+        cedv["cedv1"] = advance->cedv.cedv1;
+        cedv["cedv2"] = advance->cedv.cedv2;
+        cedv["discharge_cedv0"] = advance->cedv.discharge_cedv0;
+        cedv["discharge_cedv10"] = advance->cedv.discharge_cedv10;
+        cedv["discharge_cedv20"] = advance->cedv.discharge_cedv20;
+        cedv["discharge_cedv30"] = advance->cedv.discharge_cedv30;
+        cedv["discharge_cedv40"] = advance->cedv.discharge_cedv40;
+        cedv["discharge_cedv50"] = advance->cedv.discharge_cedv50;
+        cedv["discharge_cedv60"] = advance->cedv.discharge_cedv60;
+        cedv["discharge_cedv70"] = advance->cedv.discharge_cedv70;
+        cedv["discharge_cedv80"] = advance->cedv.discharge_cedv80;
+        cedv["discharge_cedv90"] = advance->cedv.discharge_cedv90;
+        cedv["discharge_cedv100"] = advance->cedv.discharge_cedv100;
+
+        // Add status object
+        JsonObject statusObj = array.createNestedObject();
+        statusObj["command"] = "status";
+        statusObj["soc_gauge"] = status->soc_gauge;
+        statusObj["charge_current"] = status->charge_current;
+        statusObj["total_voltage"] = String(status->total_voltage/1000.0f, 3);
+        statusObj["learned_capacity"] = String(status->learned_capacity /1000.0f, 3);
+        statusObj["pack_voltage"] = String(status->pack_voltage);
+        statusObj["fet_enable"] = status->fet_enable;
+        statusObj["protection_sta"] = String(status->protection_sta) + String((status->emergency_shutdown) ? ",EMSHUT" : "");
+
+        JsonArray cells = statusObj.createNestedArray("cells");
+        for (int j = 0; j < 4; ++j) {
+            JsonObject cell = cells.createNestedObject();
+            cell["cell_num"] = status->cells[j].cell_num;
+            cell["temperature"] = round(status->cells[j].temperature * 1000)/1000.0f;
+            cell["voltage"] = round((status->cells[j].voltage / 1000.0f) * 1000) / 1000.0f;
+        }
+    }
+
     return serializeJson(doc, output);
 }
 
@@ -612,7 +675,7 @@ int meshSolarCmdHandle(const char *cmd)
              * "advance": Updates advanced settings (CEDV, protection thresholds)
              * "switch": Controls FET enable/disable
              * "reset": Resets battery gauge learning data
-             * "sync": Sends current configuration data multiple times
+             * "sync": Sends current config, advance, and status data as array
              * "status": Returns current battery status as JSON
              *
              * PORTING NOTES:
@@ -716,19 +779,19 @@ int meshSolarCmdHandle(const char *cmd)
                 LOG_I("Reset response sent");
             }
             else if (0 == strcmp(meshsolar.cmd.command, "sync")) {
-                // Read current configuration data
+                // Read current configuration and status data
                 TRY_EXECUTE(READ_TRY_NUM, READ_TRY_INTERVAL, readResults[0], meshsolar.get_realtime_bat_status());
                 TRY_EXECUTE(READ_TRY_NUM, READ_TRY_INTERVAL, readResults[1], meshsolar.get_basic_bat_realtime_setting());
                 TRY_EXECUTE(READ_TRY_NUM, READ_TRY_INTERVAL, readResults[2], meshsolar.get_advance_bat_realtime_setting());
 
-                // Generate JSON array containing all sync data
-                size_t len = meshsolar_sync_array_to_json(&meshsolar.sync_rsp.basic, &meshsolar.sync_rsp.advance, meshsolar.cmd.sync.times, json);
+                // Generate JSON array containing config, advance, and status data
+                size_t len = meshsolar_complete_sync_array_to_json(&meshsolar.sync_rsp.basic, &meshsolar.sync_rsp.advance, &meshsolar.sta, meshsolar.cmd.sync.times, json);
 
                 if(len > 0) {
                     comSerial.println(json); // Send complete JSON array
-                    LOG_I("Sync JSON array sent: %d config pairs", meshsolar.cmd.sync.times);
+                    LOG_I("Complete sync array sent: %d triplets (config+advance+status)", meshsolar.cmd.sync.times);
                 } else {
-                    LOG_E("Failed to generate sync JSON array");
+                    LOG_E("Failed to generate complete sync JSON array");
                 }
             }
             else if (0 == strcmp(meshsolar.cmd.command, "status")) {
