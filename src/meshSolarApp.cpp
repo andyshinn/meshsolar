@@ -623,24 +623,18 @@ int meshSolarCmdHandle(const char *cmd)
                 TRY_EXECUTE(READ_TRY_NUM, READ_TRY_INTERVAL, readResults[0], meshsolar.get_realtime_bat_status());
                 TRY_EXECUTE(READ_TRY_NUM, READ_TRY_INTERVAL, readResults[1], meshsolar.get_basic_bat_realtime_setting());
                 TRY_EXECUTE(READ_TRY_NUM, READ_TRY_INTERVAL, readResults[2], meshsolar.get_advance_bat_realtime_setting());    
-                len = meshsolar_status_to_json(&meshsolar.sta, json);
-                if(len > 0) {
-                    comSerial.println(json); // Send the configuration back to the serial port
-                    delay(10); // Small delay to avoid flooding the serial output
-                    LOG_D("%s", json.c_str());
-                }
                 for(uint8_t i = 0; i < meshsolar.cmd.sync.times; i++) {
                     len = meshsolar_basic_config_to_json(&meshsolar.sync_rsp.basic, json); // Get the basic battery settings
                     if(len > 0) {
                         comSerial.println(json); // Send the configuration back to the serial port
-                        delay(10); // Small delay to avoid flooding the serial output
+                        delay(50); // Increased delay for web flasher compatibility
                         LOG_D("%s", json.c_str());
                     }
 
                     len = meshsolar_advance_config_to_json(&meshsolar.sync_rsp.advance, json); // Get the advanced battery settings
                     if(len > 0) {
                         comSerial.println(json); // Send the configuration back to the serial port
-                        delay(10); // Small delay to avoid flooding the serial output
+                        delay(50); // Increased delay for web flasher compatibility
                         LOG_D("%s", json.c_str());
                     }
                 }
