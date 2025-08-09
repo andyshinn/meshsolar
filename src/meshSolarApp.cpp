@@ -516,6 +516,7 @@ int meshSolarCmdHandle(const char *cmd)
              * "switch": Controls FET enable/disable
              * "reset": Resets battery gauge learning data
              * "sync": Sends current configuration data multiple times
+             * "status": Returns current battery status as JSON
              * 
              * PORTING NOTES:
              * - All configuration changes are immediately written to BQ4050
@@ -644,6 +645,17 @@ int meshSolarCmdHandle(const char *cmd)
                     }
                 }
                 LOG_I("Sync data sent %d times.", meshsolar.cmd.sync.times);
+            }
+            else if (0 == strcmp(meshsolar.cmd.command, "status")) {
+                // Status command - read battery status and send JSON response
+                String json;
+                TRY_EXECUTE(READ_TRY_NUM, READ_TRY_INTERVAL, readResults[0], meshsolar.get_realtime_bat_status());
+                size_t len = meshsolar_status_to_json(&meshsolar.sta, json);
+                if(len > 0) {
+                    comSerial.println(json); // Send the status JSON back to the serial port
+                    delay(10); // Small delay to avoid flooding the serial output
+                    LOG_I("Status response sent");
+                }
             }
             else{
                 LOG_E("Unknown command: %s", meshsolar.cmd.command);
